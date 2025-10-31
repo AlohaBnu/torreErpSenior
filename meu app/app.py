@@ -3,7 +3,7 @@ import pandas as pd
 
 st.set_page_config(page_title="Meu App Streamlit", layout="wide")
 
-st.title("🚀 teste")
+st.title("🚀 Primeira alteração")
 st.write("Olá! Este app está roaweaweud 😄")
 
 data = pd.DataFrame({
