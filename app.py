@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import mysql.connector as mc
+import mysql.connector
 from mysql.connector import Error
 import unicodedata
 
@@ -29,7 +29,7 @@ def limpar_texto(x):
 
 def create_connection():
     try:
-        connection = mc.connect(
+        connection = mysql.connector.connect(
             host='172.31.20.168',
             user='consulta',
             password='wH@xQd',
@@ -262,3 +262,4 @@ st.markdown("---")
 if st.button("🔄 Atualizar dados"):
     st.cache_data.clear()
     st.rerun()
+
