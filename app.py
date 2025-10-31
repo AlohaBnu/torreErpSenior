@@ -10,78 +10,6 @@ import unicodedata
 # -------------------------
 st.set_page_config(page_title="Dashboard Consultores", page_icon="📈", layout="wide")
 
-# -------------------------
-# CSS PERSONALIZADO
-# -------------------------
-st.markdown("""
-    <style>
-    /* ======= LAYOUT GERAL ======= */
-    [data-testid="stAppViewContainer"] {
-        background: linear-gradient(135deg, #f7f9fc 0%, #eef2f7 100%);
-        color: #2c3e50;
-        font-family: 'Segoe UI', Roboto, sans-serif;
-    }
-    [data-testid="stSidebar"] {
-        background: #1f2d3d;
-        color: #fff;
-    }
-    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
-        color: #fff;
-    }
-    .stSelectbox label, .stMultiselect label {
-        font-weight: 600 !important;
-        color: #fff !important;
-    }
-    /* ======= TÍTULOS ======= */
-    h1, h2, h3 {
-        color: #1a202c;
-        font-weight: 700;
-    }
-    /* ======= CARDS DE MÉTRICAS ======= */
-    .metric-card {
-        background: white;
-        border-radius: 15px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-        padding: 20px;
-        text-align: center;
-        transition: all 0.2s ease-in-out;
-    }
-    .metric-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 8px 16px rgba(0,0,0,0.1);
-    }
-    .metric-label {
-        font-size: 0.9rem;
-        color: #6b7280;
-    }
-    .metric-value {
-        font-size: 2rem;
-        font-weight: 700;
-        color: #1f2937;
-    }
-    /* ======= DATAFRAME ======= */
-    .stDataFrame {
-        border-radius: 12px !important;
-        overflow: hidden !important;
-        background-color: white;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-    }
-    /* ======= BOTÃO ======= */
-    div.stButton > button {
-        background: linear-gradient(90deg, #2563eb, #3b82f6);
-        color: white;
-        border: none;
-        border-radius: 10px;
-        padding: 0.6rem 1.2rem;
-        font-weight: 600;
-        transition: 0.3s;
-    }
-    div.stButton > button:hover {
-        background: linear-gradient(90deg, #1d4ed8, #2563eb);
-        transform: scale(1.02);
-    }
-    </style>
-""", unsafe_allow_html=True)
 
 # -------------------------
 # TÍTULO PRINCIPAL
@@ -89,14 +17,6 @@ st.markdown("""
 st.markdown("<h1 style='text-align:center; color:#2563eb;'>📊 Mapa de Consultores</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align:center; color:#6b7280;'>Monitoramento das consultorias, certificações e demandas</p>", unsafe_allow_html=True)
 st.markdown("---")
-
-# -------------------------
-# CONFIGURAÇÕES DO BANCO
-# -------------------------
-hostname = 'fastproject.senior.com.br'
-user = 'fast'
-password = 'kK3F6737IER3d-sf*'
-database = 'fast'
 
 # -------------------------
 # FUNÇÕES AUXILIARES
@@ -110,16 +30,20 @@ def limpar_texto(x):
 def create_connection():
     try:
         connection = mc.connect(
-            host=hostname,
-            database=database,
-            user=user,
-            password=password,
-            auth_plugin='mysql_native_password'
+            host='172.31.20.168',
+            user='consulta',
+            password='wH@xQd',
+            database='fast',
+            port=3306,  # explicita a porta
+            auth_plugin='mysql_native_password',
+            connection_timeout=10  # aumenta o timeout
         )
         if connection.is_connected():
+            st.success("✅ Conectado ao MySQL")
             return connection
     except Error as e:
-        st.error(f"Erro ao conectar ao MySQL: {e}")
+        st.error(f"❌ Erro ao conectar ao MySQL: {e}")
+        return None
 
 # -------------------------
 # CONSULTAS AO BANCO
