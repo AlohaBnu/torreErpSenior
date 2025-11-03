@@ -114,18 +114,19 @@ if st.button("Gerar Documento PDF"):
         story.append(Paragraph("Atividades Realizadas", title_style))
         story.append(Spacer(1, 11))
 
-        # Adiciona perguntas, respostas e imagens
-        for pergunta, resposta, img in zip(perguntas, respostas, imagens):
+    # Adiciona perguntas, respostas e imagens
+        for pergunta, resposta, imgs in zip(perguntas, respostas, imagens):
             story.append(Paragraph(pergunta, question_style))
             story.append(Paragraph(resposta if resposta else "—", answer_style))
-            
-            if img is not None:
+
+        if imgs:  # se houver imagens enviadas
+            for img in imgs:  # percorre todas as imagens
                 image_data = BytesIO(img.read())
                 pil_img = PILImage.open(image_data)
                 max_width = 400
                 max_height = 250
 
-                # Mantém a proporção
+            # Mantém a proporção
                 ratio = min(max_width / pil_img.width, max_height / pil_img.height)
                 new_width = int(pil_img.width * ratio)
                 new_height = int(pil_img.height * ratio)
@@ -134,7 +135,9 @@ if st.button("Gerar Documento PDF"):
                 reportlab_image = Image(image_data, width=new_width, height=new_height)
                 story.append(reportlab_image)
                 story.append(Spacer(1, 10))
-            story.append(Spacer(1, 10))
+    
+        story.append(Spacer(1, 10))
+
 
         from reportlab.platypus import KeepTogether
 
