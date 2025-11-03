@@ -7,6 +7,7 @@ from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
 from reportlab.lib import colors
 from PIL import Image as PILImage
+from reportlab.platypus import KeepTogether
 
 # ============================================
 # CONFIGURAÇÕES INICIAIS
@@ -119,27 +120,37 @@ if st.button("Gerar Documento PDF"):
             story.append(Paragraph(pergunta, question_style))
             story.append(Paragraph(resposta if resposta else "—", answer_style))
 
-        if imgs:  # se houver imagens enviadas
-            for img in imgs:  # percorre todas as imagens
-                image_data = BytesIO(img.read())
-                pil_img = PILImage.open(image_data)
-                max_width = 400
-                max_height = 250
+        if imgs:  # imgs é uma lista de arquivos
+            for img in imgs:
+            # Lê o conteúdo corretamente
+                image_bytes = img.getvalue()  # mais confiável que .read()
+                image_data = BytesIO(image_bytes)
 
-            # Mantém a proporção
-                ratio = min(max_width / pil_img.width, max_height / pil_img.height)
-                new_width = int(pil_img.width * ratio)
-                new_height = int(pil_img.height * ratio)
+                try:
+                 pil_img = PILImage.open(image_data)
+                except Exception as e:
+                 st.warning(f"Não foi possível abrir a imagem {img.name}: {e}")
+                continue
 
-                image_data.seek(0)
-                reportlab_image = Image(image_data, width=new_width, height=new_height)
-                story.append(reportlab_image)
-                story.append(Spacer(1, 10))
-    
+            max_width = 400
+            max_height = 250
+
+            # Mantém proporção
+            ratio = min(max_width / pil_img.width, max_height / pil_img.height)
+            new_width = int(pil_img.width * ratio)
+            new_height = int(pil_img.height * ratio)
+
+            # Reposiciona o ponteiro antes de enviar pro PDF
+            image_data.seek(0)
+
+            reportlab_image = Image(image_data, width=new_width, height=new_height)
+            story.append(reportlab_image)
+            story.append(Spacer(1, 10))
+        else:
+            st.write(f"Sem anexos para: {pergunta}")
+
         story.append(Spacer(1, 10))
 
-
-        from reportlab.platypus import KeepTogether
 
         texto = (
         "Todas as atividades do Foundation estão contempladas dentro da DEAP.<br/>"
