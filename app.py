@@ -59,10 +59,20 @@ imagens = []
 for pergunta in perguntas:
     st.markdown(f"### {pergunta}")
     resposta = st.text_area(f"Resposta - {pergunta}", placeholder="Digite sua resposta aqui...")
-    img = st.file_uploader(f"Imagem opcional - {pergunta}", type=["png", "jpg", "jpeg"], key=pergunta)
+    
+    # Permitir múltiplos anexos
+    imgs = st.file_uploader(
+        f"Imagens opcionais - {pergunta}",
+        type=["png", "jpg", "jpeg"],
+        accept_multiple_files=True,
+        key=pergunta
+    )
+    
     respostas.append(resposta)
-    imagens.append(img)
+    imagens.append(imgs)  # agora 'imgs' é uma lista de arquivos
+    
     st.markdown("---")
+
 
 # ============================================
 # GERAÇÃO DO DOCUMENTO PDF
