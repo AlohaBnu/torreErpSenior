@@ -28,7 +28,7 @@ with col3:
 with col4:
     data_repass = st.date_input("Data do Repasse", value=date.today())
 with col5:
-    data_repassFoundation = st.date_input("Apresentação Foundation1", value=date.today())
+    data_repassFoundation = st.date_input("Apresentação Foundation", value=date.today())
 
 st.markdown("---")
 
