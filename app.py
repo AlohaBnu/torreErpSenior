@@ -60,7 +60,6 @@ for pergunta in perguntas:
     st.markdown(f"### {pergunta}")
     resposta = st.text_area(f"Resposta - {pergunta}", placeholder="Digite sua resposta aqui...")
     img = st.file_uploader(f"Imagem opcional - {pergunta}", type=["png", "jpg", "jpeg"], key=pergunta)
-    img = st.file_uploader(f"Imagem opcional - {pergunta}", type=["png", "jpg", "jpeg"], key=pergunta)
     respostas.append(resposta)
     imagens.append(img)
     st.markdown("---")
