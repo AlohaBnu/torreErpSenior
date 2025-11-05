@@ -7,6 +7,15 @@ from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, KeepTogether
 from reportlab.lib import colors
 from PIL import Image as PILImage
+import mysql.connector as mc
+import pytz
+from mysql.connector import Error
+import os
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import matplotlib.pyplot as plt
+import pyarrow as pa
 
 # ============================================
 # CONFIGURAÇÕES INICIAIS
@@ -16,21 +25,121 @@ st.set_page_config(page_title="Documento de Repasse - Foundation", page_icon="�
 st.title("📄 Documento de Repasse - Foundation")
 st.write("Preencha as informações abaixo para gerar automaticamente o documento de repasse em formato PDF.")
 
+USER_DB_FAST = os.environ.get('USER_DB_FAST')
+PASS_DB_FAST = os.environ.get('PASS_DB_FAST')
+
+# ============================================
+# CONEXÃO COM O BANCO DE DADOS
+# ============================================
+hostname = 'fastproject.senior.com.br'
+user = 'consulta'
+password = 'wH@xQd'
+database = 'fast'
+
+def create_connection():
+    try:
+        connection = mc.connect(
+            host=hostname,
+            database=database,
+            user=user,
+            password=password,
+            auth_plugin='mysql_native_password'
+        )
+        if connection.is_connected():
+            return connection
+    except Error as e:
+        st.error(f"❌ Erro ao conectar ao MySQL: {e}")
+        return None
+
+connection = create_connection()
+
+# ============================================
+# BUSCA DE PROJETOS NO BANCO
+# ============================================
+projetos = []
+usuarios = []
+
+if connection:
+    try:
+        cursor = connection.cursor(dictionary=True)
+        
+        # Consulta de projetos
+        query_projetos = """
+            SELECT idProjeto, nome
+            FROM projeto
+            WHERE statusprojeto = 0 
+              AND idProduto = 1 
+              AND idProdutoCronograma IN (38, 89)
+            ORDER BY idProjeto ASC
+        """
+        cursor.execute(query_projetos)
+        resultados = cursor.fetchall()
+        projetos = [f"{row['nome']}" for row in resultados]
+
+        # Consulta de usuários
+        query_usuarios = """
+            SELECT idusuario,nome 
+            FROM usuario 
+            WHERE ativo = 1
+              AND idProduto in(1,2)
+              AND tipoAcesso IN (2,4,1) 
+            ORDER BY nome ASC
+        """
+        cursor.execute(query_usuarios)
+        resultados = cursor.fetchall()
+        usuarios = [f"{row['nome']}" for row in resultados]
+
+        cursor.close()
+
+    except Error as e:
+        st.error(f"Erro ao buscar dados: {e}")
+    finally:
+        connection.close()
+        
+
+# ============================================
+# CAMPO DE SELEÇÃO DE PROJETO
+# ============================================
 col1, col2 = st.columns(2)
+
 with col1:
-    projeto = st.text_input("Nome do Projeto", placeholder="Ex: Nome do Projeto")
+    if projetos and len(projetos) > 0:
+        projeto = st.selectbox(
+            "Selecione o Projeto",
+            options=projetos,
+            index=None,  # não seleciona nada por padrão
+            placeholder="Selecione o Projeto"
+        )
+    else:
+        projeto = st.text_input(
+            "Nome do Projeto",
+            placeholder="Ex: Selecione o Projeto (não encontrado no banco)"
+        )
+
 with col2:
-    consultor = st.text_input("Responsável", placeholder="Ex: Nome do responsável")
+    consultor = st.text_input(
+        "Responsável",
+        placeholder="Ex: Nome do responsável"
+    )
+
 
 col3, col4, col5 = st.columns(3)
 with col3:
-    empresa = st.text_input("Gerente de Projeto", placeholder="Ex: Nome do GP")
+    if usuarios:
+        usuarios = st.selectbox(
+        "Selecione o Gerente de Projetos",
+        options=usuarios,
+        index=None,
+        placeholder="Nome do responsável"
+    )
+              
 with col4:
     data_repass = st.date_input("Data do Repasse", value=date.today())
 with col5:
     data_repassFoundation = st.date_input("Apresentação Foundation", value=date.today())
 
 st.markdown("---")
+
 
 # ============================================
 # PERGUNTAS FIXAS
@@ -124,7 +233,7 @@ if st.button("Gerar Documento PDF"):
         info = [
             f"Projeto: {projeto}",
             f"Consultor Responsável: {consultor}",
-            f"Gerente de Projeto: {empresa}",
+            f"Gerente de Projeto: {usuarios}",
             f"Data do Repasse: {data_repass.strftime('%d/%m/%Y')}",
             f"Apresentação Foundation: {data_repassFoundation.strftime('%d/%m/%Y')}",
         ]
@@ -139,6 +248,10 @@ if st.button("Gerar Documento PDF"):
         for pergunta, resposta, imagens in zip(perguntas, respostas, todas_imagens):
             story.append(Paragraph(pergunta, question_style))
             story.append(Paragraph(resposta if resposta else "—", answer_style))
+            
+           # Garante que quebras de linha sejam renderizadas no PDF
+            resposta_formatada = resposta.replace("\n", "<br/>") if resposta else "—"
+            story.append(Paragraph(resposta_formatada, answer_style))
 
             if imagens:
                 for img in imagens:
