@@ -7,15 +7,6 @@ from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, KeepTogether
 from reportlab.lib import colors
 from PIL import Image as PILImage
-import mysql.connector as mc
-import pytz
-from mysql.connector import Error
-import os
-import pandas as pd
-import numpy as np
-import plotly.express as px
-import matplotlib.pyplot as plt
-import pyarrow as pa
 
 # ============================================
 # CONFIGURAÇÕES INICIAIS
