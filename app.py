@@ -139,6 +139,10 @@ if st.button("Gerar Documento PDF"):
         for pergunta, resposta, imagens in zip(perguntas, respostas, todas_imagens):
             story.append(Paragraph(pergunta, question_style))
             story.append(Paragraph(resposta if resposta else "—", answer_style))
+            
+           # Garante que quebras de linha sejam renderizadas no PDF
+            resposta_formatada = resposta.replace("\n", "<br/>") if resposta else "—"
+            story.append(Paragraph(resposta_formatada, answer_style))
 
             if imagens:
                 for img in imagens:
