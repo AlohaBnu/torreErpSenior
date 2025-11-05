@@ -14,7 +14,6 @@ import os
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import matplotlib.pyplot as plt
 import pyarrow as pa
 
 # ============================================
