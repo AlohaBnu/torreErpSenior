@@ -1,10 +1,17 @@
-streamlit==1.51.0
-mysql-connector-python==9.5.0
-pandas==2.2.2
-plotly==5.24.1
-reportlab==4.2.2
-Pillow==10.4.0
-matplotlib==3.9.2
-pytz==2024.1
-pyarrow==17.0.0
-numpy==1.26.4
+import streamlit as st
+from datetime import date
+from io import BytesIO
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, KeepTogether
+from reportlab.lib import colors
+from PIL import Image as PILImage
+import mysql.connector as mc
+import pytz
+from mysql.connector import Error
+import os
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import pyarrow as pa
