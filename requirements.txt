@@ -5,3 +5,4 @@ plotly
 reportlab
 pillow
 matplotlib
+numpy
