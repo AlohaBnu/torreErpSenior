@@ -8,14 +8,8 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Keep
 from reportlab.lib import colors
 from PIL import Image as PILImage
 import mysql.connector as mc
-import pytz
 from mysql.connector import Error
 import os
-import pandas as pd
-import numpy as np
-import plotly.express as px
-import matplotlib.pyplot as plt
-import pyarrow as pa
 
 # ============================================
 # CONFIGURAÇÕES INICIAIS
@@ -25,18 +19,17 @@ st.set_page_config(page_title="Documento de Repasse - Foundation", page_icon="�
 st.title("📄 Documento de Repasse - Foundation")
 st.write("Preencha as informações abaixo para gerar automaticamente o documento de repasse em formato PDF.")
 
-USER_DB_FAST = os.environ.get('USER_DB_FAST')
-PASS_DB_FAST = os.environ.get('PASS_DB_FAST')
-
 # ============================================
 # CONEXÃO COM O BANCO DE DADOS
 # ============================================
 hostname = 'fastproject.senior.com.br'
-user = 'consulta'
-password = 'wH@xQd'
+user = os.environ.get('USER_DB_FAST', 'consulta')
+password = os.environ.get('PASS_DB_FAST', 'wH@xQd')
 database = 'fast'
 
-def create_connection():
+@st.cache_data(ttl=300)
+def carregar_dados():
+    """Busca projetos e usuários do banco de dados e armazena em cache por 5 minutos."""
     try:
         connection = mc.connect(
             host=hostname,
@@ -45,69 +38,50 @@ def create_connection():
             password=password,
             auth_plugin='mysql_native_password'
         )
-        if connection.is_connected():
-            return connection
-    except Error as e:
-        st.error(f"❌ Erro ao conectar ao MySQL: {e}")
-        return None
-
-connection = create_connection()
-
-# ============================================
-# BUSCA DE PROJETOS NO BANCO
-# ============================================
-projetos = []
-usuarios = []
-
-if connection:
-    try:
         cursor = connection.cursor(dictionary=True)
-        
+
         # Consulta de projetos
-        query_projetos = """
+        cursor.execute("""
             SELECT idProjeto, nome
             FROM projeto
             WHERE statusprojeto = 0 
               AND idProduto = 1 
               AND idProdutoCronograma IN (38, 89)
             ORDER BY idProjeto ASC
-        """
-        cursor.execute(query_projetos)
-        resultados = cursor.fetchall()
-        projetos = [f"{row['nome']}" for row in resultados]
+        """)
+        projetos = [row["nome"] for row in cursor.fetchall()]
 
         # Consulta de usuários
-        query_usuarios = """
-            SELECT idusuario,nome 
-            FROM usuario 
+        cursor.execute("""
+            SELECT idusuario, nome
+            FROM usuario
             WHERE ativo = 1
-              AND idProduto in(1,2)
-              AND tipoAcesso IN (2,4,1) 
+              AND idProduto IN (1,2)
+              AND tipoAcesso IN (2,4,1)
             ORDER BY nome ASC
-        """
-        cursor.execute(query_usuarios)
-        resultados = cursor.fetchall()
-        usuarios = [f"{row['nome']}" for row in resultados]
+        """)
+        usuarios = [row["nome"] for row in cursor.fetchall()]
 
         cursor.close()
-
-    except Error as e:
-        st.error(f"Erro ao buscar dados: {e}")
-    finally:
         connection.close()
-        
+        return projetos, usuarios
+    except Error as e:
+        st.error(f"❌ Erro ao buscar dados: {e}")
+        return [], []
+
+projetos, usuarios = carregar_dados()
 
 # ============================================
-# CAMPO DE SELEÇÃO DE PROJETO
+# CAMPOS DE SELEÇÃO
 # ============================================
 col1, col2 = st.columns(2)
 
 with col1:
-    if projetos and len(projetos) > 0:
+    if projetos:
         projeto = st.selectbox(
             "Selecione o Projeto",
             options=projetos,
-            index=None,  # não seleciona nada por padrão
+            index=None,
             placeholder="Selecione o Projeto"
         )
     else:
@@ -122,24 +96,21 @@ with col2:
         placeholder="Ex: Nome do responsável"
     )
 
-
 col3, col4, col5 = st.columns(3)
 with col3:
-    if usuarios:
-        usuarios = st.selectbox(
+    gerente = st.selectbox(
         "Selecione o Gerente de Projetos",
         options=usuarios,
         index=None,
         placeholder="Nome do responsável"
     )
-              
+
 with col4:
     data_repass = st.date_input("Data do Repasse", value=date.today())
 with col5:
     data_repassFoundation = st.date_input("Apresentação Foundation", value=date.today())
 
 st.markdown("---")
-
 
 # ============================================
 # PERGUNTAS FIXAS
@@ -167,7 +138,11 @@ todas_imagens = []
 
 for i, pergunta in enumerate(perguntas):
     st.markdown(f"### {pergunta}")
-    resposta = st.text_area(f"Resposta - {pergunta}", placeholder="Digite sua resposta aqui...", key=f"resposta_{i}")
+    resposta = st.text_area(
+        f"Resposta - {pergunta}",
+        placeholder="Digite sua resposta aqui...",
+        key=f"resposta_{i}"
+    )
     imagens = st.file_uploader(
         f"Anexos (você pode selecionar várias imagens) - {pergunta}",
         type=["png", "jpg", "jpeg"],
@@ -182,7 +157,7 @@ for i, pergunta in enumerate(perguntas):
 # GERAÇÃO DO DOCUMENTO PDF
 # ============================================
 if st.button("Gerar Documento PDF"):
-    if not projeto or not consultor:
+    if not projeto or not consultor or not gerente:
         st.warning("Por favor, preencha todos os campos antes de gerar o documento.")
     else:
         buffer = BytesIO()
@@ -233,7 +208,7 @@ if st.button("Gerar Documento PDF"):
         info = [
             f"Projeto: {projeto}",
             f"Consultor Responsável: {consultor}",
-            f"Gerente de Projeto: {usuarios}",
+            f"Gerente de Projeto: {gerente}",
             f"Data do Repasse: {data_repass.strftime('%d/%m/%Y')}",
             f"Apresentação Foundation: {data_repassFoundation.strftime('%d/%m/%Y')}",
         ]
@@ -247,9 +222,6 @@ if st.button("Gerar Documento PDF"):
         # Adiciona perguntas, respostas e imagens
         for pergunta, resposta, imagens in zip(perguntas, respostas, todas_imagens):
             story.append(Paragraph(pergunta, question_style))
-            story.append(Paragraph(resposta if resposta else "—", answer_style))
-            
-           # Garante que quebras de linha sejam renderizadas no PDF
             resposta_formatada = resposta.replace("\n", "<br/>") if resposta else "—"
             story.append(Paragraph(resposta_formatada, answer_style))
 
@@ -258,11 +230,9 @@ if st.button("Gerar Documento PDF"):
                     image_data = BytesIO(img.read())
                     pil_img = PILImage.open(image_data)
 
-                    # Define tamanho máximo
+                    # Redimensiona mantendo proporção
                     max_width = 400
                     max_height = 250
-
-                    # Mantém proporção
                     ratio = min(max_width / pil_img.width, max_height / pil_img.height)
                     new_width = int(pil_img.width * ratio)
                     new_height = int(pil_img.height * ratio)
