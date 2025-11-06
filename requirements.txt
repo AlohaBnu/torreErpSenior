@@ -4,4 +4,4 @@ pandas
 plotly
 reportlab
 pillow
-matplotlib
+matplotlib.pyplot
