@@ -56,10 +56,6 @@ def create_connection():
 projetos = []
 usuarios = []
 
-if connection:
-    try:
-        cursor = connection.cursor(dictionary=True)
-        
         # Consulta de projetos
         query_projetos = """
             SELECT idProjeto, nome
