@@ -32,8 +32,8 @@ PASS_DB_FAST = os.environ.get('PASS_DB_FAST')
 # CONEXÃO COM O BANCO DE DADOS
 # ============================================
 hostname = 'fastproject.senior.com.br'
-user = 'consulta'
-password = 'wH@xQd'
+user = 'fast'
+password = 'kK3F6737IER3d-sf*'
 database = 'fast'
 
 def create_connection():
