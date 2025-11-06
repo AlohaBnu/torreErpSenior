@@ -48,10 +48,7 @@ def create_connection():
         if connection.is_connected():
             return connection
     except Error as e:
-        st.error(f"❌ Erro ao conectar ao MySQL: {e}")
-        return None
-
-connection = create_connection()
+        st.error(f"Erro ao conectar ao MySQL: {e}")
 
 # ============================================
 # BUSCA DE PROJETOS NO BANCO
