@@ -32,8 +32,8 @@ PASS_DB_FAST = os.environ.get('PASS_DB_FAST')
 # CONEXÃO COM O BANCO DE DADOS
 # ============================================
 hostname = 'fastproject.senior.com.br'
-user = 'fast'
-password = 'kK3F6737IER3d-sf*'
+user = 'consulta'
+password = 'wH@xQd'
 database = 'fast'
 
 def create_connection():
@@ -48,7 +48,10 @@ def create_connection():
         if connection.is_connected():
             return connection
     except Error as e:
-        st.error(f"Erro ao conectar ao MySQL: {e}")
+        st.error(f"❌ Erro ao conectar ao MySQL: {e}")
+        return None
+
+connection = create_connection()
 
 # ============================================
 # BUSCA DE PROJETOS NO BANCO
@@ -56,6 +59,10 @@ def create_connection():
 projetos = []
 usuarios = []
 
+if connection:
+    try:
+        cursor = connection.cursor(dictionary=True)
+        
         # Consulta de projetos
         query_projetos = """
             SELECT idProjeto, nome
