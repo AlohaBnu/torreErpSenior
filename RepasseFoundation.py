@@ -1,5 +1,4 @@
 from asyncio import events
-from pages.bd.conexao import select, execute
 import streamlit as st
 from streamlit.errors import StreamlitAPIException
 from streamlit_calendar import calendar as streamlit_calendar
