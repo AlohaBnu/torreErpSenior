@@ -1,7 +1,6 @@
-mysql-connector-python==9.5.0
 streamlit==1.51.0
+mysql-connector-python==9.5.0
 pandas
 plotly
 reportlab
 pillow
-matplotlib
