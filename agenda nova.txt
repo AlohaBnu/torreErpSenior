@@ -1,0 +1,577 @@
+from bd.conexao import select, execute
+import streamlit as st
+from streamlit_calendar import calendar as streamlit_calendar
+from datetime import date, datetime, time, timedelta
+import hashlib
+
+st.set_page_config(layout="wide")
+st.title("Agendas ERP")
+
+# ----------------------
+# UTIL: gerar cor a partir do nome da empresa (HSL suave convertido para HEX)
+# ----------------------
+def empresa_to_color(nome: str) -> str:
+    # hash simples para hue
+    if not nome:
+        nome = "default"
+    h = int(hashlib.md5(nome.encode("utf-8")).hexdigest(), 16) % 360
+    s = 65  # saturação
+    l = 90  # clara para fundo
+    # converter HSL para HEX (simples)
+    import colorsys
+    r, g, b = colorsys.hls_to_rgb(h / 360.0, l / 100.0, s / 100.0)
+    return '#{:02x}{:02x}{:02x}'.format(int(r * 255), int(g * 255), int(b * 255))
+
+# ----------------------
+# UTIL: verificar se a coluna existe na tabela (para compatibilidade)
+# ----------------------
+def has_column(table: str, column: str) -> bool:
+    """
+    Retorna True se a coluna existir na tabela (MySQL INFORMATION_SCHEMA).
+    Ajuste se seu banco for diferente.
+    """
+    try:
+        q = """
+            SELECT COUNT(*) as qtd
+            FROM information_schema.columns
+            WHERE table_schema = DATABASE()
+              AND table_name = %s
+              AND column_name = %s
+        """
+        res = select(q, (table, column))
+        if res and isinstance(res, list):
+            return int(res[0].get('qtd', res[0].get('QTD', 0))) > 0
+        return False
+    except Exception:
+        # Se a consulta falhar, assume False para segurança
+        return False
+
+# -------------------------------
+# BUSCAR DADOS (mantive sua query original)
+# -------------------------------
+def buscar_dados_api():
+    query = """select
+                a.idAgenda as idagenda,
+                a.idEmpresa as idEmpresa,
+                a.idUsuario as idUsuario,
+                u.nome as usuario,
+                a.datInicio as datInicio,
+                a.datFim as datFim,
+                sec_to_time((time_to_sec(a.datFim) - time_to_sec(a.datInicio))) as horas,
+                a.atividade as atividade,
+                a.obsAgenda as obsagenda,
+                a.idProjeto as idProjeto,
+                p.nome as projeto,
+                a.status as statusAgenda,
+                p.horasPrevistas as horasPrevistas,
+                p.tipoFaturamento as tipoFaturamento,
+                p.idProdutoCronograma as idProdutoCronograma,
+                p.idFilial as idFilial,
+                p.modelo as modelo,
+                p.datFaturamento as datFaturamento,
+                p.datInicio as dataInicioProjeto,
+                p.valorFaturamento as valorFaturamento,
+                p.nomeCompleto as nomeCompleto,
+                p.statusprojeto as statusProjeto,
+                p.melhoriaRisco as melhoriaRisco,
+                u.idProduto as sistema,
+                p.idUsuarioCadastro as idusuariocadastroprojeto,
+                ux.indentificador as gp,
+                u.ativo as usuarioAtivo,
+                u.tipoAcesso as tipoUsuario,
+                a.datCadastro as datCadastro,
+                u.modeloEquipe as modeloEquipe,
+                u.cargo as cargo,
+                a.nomeProjeto as nomeProjeto
+            from
+                (((agenda2 a
+            left join projeto p on
+                ((p.idProjeto = a.idProjeto)))
+            left join usuario u on
+                ((a.idUsuario = u.idUsuario)))
+            left join usuario ux on
+                ((p.idUsuarioCadastro = ux.idUsuario)))"""
+    dados = select(query)
+    if dados:
+        return dados
+    else:
+        return None
+
+# -------------------------------
+# MODAL: Exibir evento com opções Editar / Excluir
+# -------------------------------
+@st.dialog("Agenda", width="large")
+def abrirAgenda(agenda):
+    st.markdown("""
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    """, unsafe_allow_html=True)
+    
+    color = "#FFEBEE"
+    st.markdown(f"""
+        <div style="border:solid 1px #000; padding:10px; color: #000; background-color: {color}">
+        <h3>{agenda['extendedProps'].get('usuario', '')}</h3>
+        <small>Evento</small>
+        <div class="row">
+        <div class="col"><b>Início:</b> {agenda['extendedProps']['start']}</div>
+        <div class="col"><b>Fim:</b> {agenda['extendedProps']['end']}</div>
+        </div>
+        <div class="row"><div class="col"><b>Projeto:</b> {agenda['extendedProps'].get('projeto','')}</div></div>
+        <div class="row"><div class="col"><b>Consultoria:</b> {agenda['extendedProps'].get('consultoria','')}</div></div>
+        <div class="row"><div class="col"><b>GP:</b> {agenda['extendedProps'].get('gp','')}</div></div>
+        <div class="row"><div class="col"><b>Atividade:</b> {agenda['extendedProps'].get('atividade','')}</div></div>
+        <div class="row"><div class="col"><b>Observação:</b> {agenda['extendedProps'].get('obs','')}</div></div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # botoes editar / excluir
+    col1, col2, col3 = st.columns([1,1,3])
+    with col1:
+        if st.button("✏️ Editar"):
+            # abrir modal de edição (chama função que reutiliza o modal de criação)
+            abrirNovoModal_edicao(agenda)
+    with col2:
+        if st.button("🗑️ Excluir"):
+            # confirmação simples
+            if st.confirm("Confirma exclusão deste agendamento?"):
+                try:
+                    idagenda = agenda.get("id", agenda.get("extendedProps", {}).get("idAgenda"))
+                    if not idagenda:
+                        # procurar no extendedProps
+                        idagenda = agenda.get("extendedProps", {}).get("idAgenda")
+                    delete_query = "DELETE FROM agenda2 WHERE idAgenda = %s"
+                    execute(delete_query, (idagenda,))
+                    st.success("Agendamento excluído.")
+                    st.session_state['reload_calendar'] = True
+                except Exception as e:
+                    st.error(f"Erro ao excluir: {e}")
+    with col3:
+        st.write("")  # espaço
+
+# -------------------------------
+# MODAL: Criar novo agendamento (usado também para edição)
+# -------------------------------
+def abrirNovoModal_edicao(agenda):
+    """
+    Abre modal de edição preenchida com dados do evento (agenda).
+    A agenda vem no formato do eventClick do calendário.
+    """
+    # Extrai dados necessários
+    ext = agenda.get("extendedProps", {})
+    # tentamos obter o idAgenda do evento
+    idagenda = agenda.get("id") or ext.get("idAgenda") or ext.get("idAgenda")
+    # buscar dados atuais diretamente do banco para garantir consistência
+    if idagenda:
+        q = "SELECT * FROM agenda2 WHERE idAgenda = %s"
+        rec = select(q, (idagenda,))
+        if rec and len(rec) > 0:
+            rec = rec[0]
+            # converte datInicio datFim para datetime se necessário
+            try:
+                datInicio = rec['datInicio']
+                datFim = rec['datFim']
+            except Exception:
+                datInicio = datetime.fromisoformat(rec['datInicio'])
+                datFim = datetime.fromisoformat(rec['datFim'])
+            abrirNovoModal(data_clicada=datInicio.date(), is_edit=True, existing=rec)
+            return
+    # fallback: tenta usar os dados do evento
+    try:
+        dt_start = datetime.fromisoformat(agenda['start'])
+        abrirNovoModal(data_clicada=dt_start.date(), is_edit=True, existing=None, event_payload=agenda)
+    except Exception:
+        abrirNovoModal(data_clicada=None, is_edit=True, existing=None, event_payload=agenda)
+
+@st.dialog("Criar nova agenda", width="large")
+def abrirNovoModal(data_clicada=None, is_edit=False, existing=None, event_payload=None):
+    """
+    data_clicada: date
+    is_edit: True se for edição
+    existing: registro da agenda2 quando edição (dict) - opcional
+    event_payload: dados do evento vindo do calendar quando não houver existing
+    """
+    query_consultores = """
+        SELECT idusuario, nome, empresa
+        FROM usuario
+        WHERE idProduto = 1
+          AND email LIKE '%consultorseniorsistemas.com.br%'
+          AND ativo = 1
+          AND empresa IS NOT NULL
+          AND nome NOT LIKE '%Canal%'
+        ORDER BY empresa, nome
+    """
+    consultores_lista = select(query_consultores) or []
+
+    consultor_placeholder = -1
+    consultores_opcoes = {consultor_placeholder: "Selecione um consultor"}
+    consultores_opcoes.update({
+        c['idusuario']: f"{c['nome']} ({c.get('empresa','')})"
+        for c in consultores_lista
+    })
+
+    query_projetos = """
+        SELECT idProjeto, nome, idFilial, idUsuarioCadastro
+        FROM projeto
+        WHERE idProduto = 1
+          AND statusprojeto = 0
+        ORDER BY nome
+    """
+    projetos_lista = select(query_projetos) or []
+
+    projeto_placeholder = -1
+    projetos_opcoes = {projeto_placeholder: "Selecione um projeto"}
+    projetos_opcoes.update({
+        p['idProjeto']: p['nome'] for p in projetos_lista
+    })
+
+    # ---------- VALORES INICIAIS (para edição ou criação) ----------
+    initial_proj = projeto_placeholder
+    initial_user = consultor_placeholder
+    initial_date = data_clicada if data_clicada else date.today()
+    initial_hora_inicio = time(8, 0)
+    initial_hora_fim = time(17, 0)
+    initial_atividade = ""
+    initial_obs = ""
+    existing_idagenda = None
+
+    # se for edição e existing vem preenchido, usa esses valores
+    if is_edit and existing:
+        existing_idagenda = existing.get('idAgenda') or existing.get('idagenda') or existing.get('id')
+        initial_user = existing.get('idUsuario') or existing.get('idusuario') or initial_user
+        initial_proj = existing.get('idProjeto') or existing.get('idprojeto') or initial_proj
+        try:
+            di = existing.get('datInicio')
+            df = existing.get('datFim')
+            if isinstance(di, str):
+                di = datetime.fromisoformat(di)
+            if isinstance(df, str):
+                df = datetime.fromisoformat(df)
+            initial_date = di.date()
+            initial_hora_inicio = di.time()
+            initial_hora_fim = df.time()
+        except Exception:
+            pass
+        initial_atividade = existing.get('atividade') or ""
+        initial_obs = existing.get('obsAgenda') or existing.get('obsagenda') or ""
+
+    # se for edição via event_payload (sem existing), tenta extrair
+    if is_edit and existing is None and event_payload:
+        existing_idagenda = event_payload.get('id') or event_payload.get('extendedProps', {}).get('idAgenda')
+        # tenta inferir proprietário/projeto a partir do payload
+        # note: o payload normalmente não tem idUsuario/idProjeto; isso é fallback
+
+    # ---------- CAMPOS DO FORMULÁRIO ----------
+    # INPUT PARA BUSCAR DEMANDA (OBRIGATÓRIO)
+    demanda_id = st.text_input("ID da Demanda *", value="")
+
+    demanda_projeto = ""
+    demanda_usuario = ""
+
+    # obrigatoriedade
+    if not demanda_id.strip():
+        st.warning("Preencha o ID da Demanda para continuar.")
+
+    # Buscar demanda
+    if demanda_id.strip():
+        q_demanda = """select d.nomePWA, d2.responsavel, DATE_FORMAT(previsaoInicio, '%d/%m/%Y') as previsaoInicio , DATE_FORMAT(previsaoFim, '%d/%m/%Y') as previsaoFim, d.horas  from demanda d left join demandausuario d2 on d.idDemanda = d2.idDemanda and d2.selecionado = 1 where d.iddemanda = %s"""
+        res_demanda = select(q_demanda, (demanda_id.strip(),))
+
+        if res_demanda:
+            demanda_projeto = res_demanda[0].get("nomePWA", "")
+            demanda_usuario = res_demanda[0].get("responsavel", "")
+            st.success("""Previsão de Início: {} | Previsão de Fim: {} | Horas: {}""".format(res_demanda[0].get("previsaoInicio", ""), res_demanda[0].get("previsaoFim", ""), res_demanda[0].get("horas", "")))
+        else:
+            st.error("Nenhuma demanda encontrada com esse ID.")
+            demanda_projeto = ""
+            demanda_usuario = ""
+    # ---------------------------------------------
+    # CAMPOS APENAS VISUAIS (NÃO EDITÁVEIS)
+    # ---------------------------------------------
+    col1, col2 = st.columns(2)
+    with col1:
+        st.text_input("Projeto", value=demanda_projeto, disabled=True)
+    with col2:
+        st.text_input("Consultor", value=demanda_usuario, disabled=True)
+
+    # Aqui continuam os outros campos do formulário normalmente...
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        data_input = st.date_input("Data", value=initial_date)
+    with col2:
+        hora_inicio = st.time_input("Hora início", value=initial_hora_inicio)
+    with col3:
+        hora_fim = st.time_input("Hora fim", value=initial_hora_fim)
+    
+    atividade = st.text_input("Atividade", value=initial_atividade)
+    observacao = st.text_area("Observação", value=initial_obs)
+
+    # opção de status (simples)
+    # status = st.selectbox("Status", options=[("Ativo",1), ("Inativo",0)], format_func=lambda x: x[0], index=0)
+
+    # ---------- AÇÃO SALVAR (create ou update) ----------
+    if st.button("Salvar"):
+        # validações
+        if not demanda_projeto:
+            st.error("Informe uma demanda!")
+            return
+        
+        if hora_fim <= hora_inicio:
+            st.error("Hora fim deve ser maior que hora início.")
+            return
+        
+        usuario = """select * from usuario where email = %s"""
+        dados_usuario = select(usuario, (demanda_usuario.strip(),))
+        
+        if dados_usuario:
+            usuario_id = dados_usuario[0].get("idUsuario") or dados_usuario[0].get("idusuario")
+        else:
+            st.error("Consultor não encontrado no sistema.")
+            return
+
+        datInicio = datetime.combine(data_input, hora_inicio)
+        datFim = datetime.combine(data_input, hora_fim)
+
+        # conflito: seleciona registros conflitantes, ignorando o próprio registro quando edição
+        sql_conflito = """
+            SELECT idAgenda, idUsuario, datInicio, datFim
+            FROM agenda2
+            WHERE idUsuario = %s
+              AND (
+                    (datInicio <= %s AND datFim > %s)
+                    OR
+                    (datInicio < %s AND datFim >= %s)
+                    OR
+                    (datInicio >= %s AND datFim <= %s)
+                  )
+        """
+        params = (usuario_id, datFim, datInicio, datFim, datInicio, datInicio, datFim)
+        conflitos = select(sql_conflito, params) or []
+        # se for edição, remover self da lista de conflitos
+        if is_edit and existing_idagenda:
+            conflitos = [c for c in conflitos if int(c.get('idAgenda') or c.get('idagenda') or 0) != int(existing_idagenda)]
+
+        if conflitos:
+            st.error("⚠️ Conflito detectado: o consultor já possui agenda nesse intervalo.")
+            for c in conflitos:
+                st.write(f" - {c.get('datInicio')} → {c.get('datFim')}")
+            return
+
+
+        # montar INSERT ou UPDATE dinamicamente dependendo de is_edit
+        try:
+            insert_query = """
+                INSERT INTO agenda2 (idUsuario, nomeProjeto, datInicio, datFim, atividade, obsAgenda, status, datCadastro, idDemanda)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), %s)
+            """
+            execute(insert_query, (
+                usuario_id, demanda_projeto, datInicio, datFim, atividade or "", observacao or "", 1, demanda_id
+            ))
+            # buscar id inserido (MySQL)
+
+            st.success("Agendamento criado com sucesso!")
+            st.session_state['reload_calendar'] = True
+            
+            for key in ["demanda_id", "datInicio", "datFim", "atividade", "observacao"]:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.rerun()
+
+
+        except Exception as e:
+            st.error(f"Erro ao salvar no banco: {e}")
+            return
+
+# -------------------------------
+# MAIN: calendário, filtros e eventos (mantive seus filtros)
+# -------------------------------
+def main():
+    # garante reload flag
+    if "reload_calendar" not in st.session_state:
+        st.session_state['reload_calendar'] = False
+
+    # CSS para evitar overflow (mantive seu trecho)
+    st.markdown(
+        """
+        <style>
+        .css-1aumxhk {
+            overflow: hidden;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # opções do calendário (mês / semana / dia)
+    calendar_options = {
+        "themeSystem": "bootstrap5",
+        "timeZone": 'local',
+        "locale": "pt-br",
+        "editable": "false",
+        "eventStartEditable": "false",
+        "eventDurationEditable": "false",
+        "selectable": True,
+        "eventLimit": "true",
+        "weekends": "true",
+        "buttonText": {
+            "today":    'Hoje',
+            "month":    'Mês',
+            "week":     'Semana',
+            "day":      'Dia',
+            "list":     'Lista'
+        },
+        "headerToolbar": {
+            "left": "today prev,next",
+            "center": "title",
+            "right": "dayGridMonth,timeGridWeek,dayGridDay"
+        },
+        "slotMinTime": "08:00:00",
+        "slotMaxTime": "18:00:00",
+        "initialView": "dayGridMonth",
+        "height": "auto",
+    }
+
+    # buscar dados com sua query completa
+    api_data = buscar_dados_api()
+
+    # Filtros - consultores e empresas ( mesma query sua )
+    query_consultores = """
+        SELECT idusuario, nome, empresa
+        FROM usuario
+        WHERE email LIKE '%consultorseniorsistemas.com.br%'
+          AND ativo = 1
+          AND empresa IS NOT NULL
+          AND nome NOT LIKE '%Canal%'
+        ORDER BY empresa, nome
+    """
+    consultores = select(query_consultores) or []
+
+    lista_empresas = sorted(list(set([c['empresa'] for c in consultores if c.get('empresa')])))
+    lista_empresas.insert(0, "Todas")
+
+    lista_consultores = sorted(list(set([c['nome'] for c in consultores if c.get('nome')])))
+    lista_consultores.insert(0, "Todos")
+
+    
+
+    # Filtro original de responsáveis
+    if api_data is not None:
+        responsaveis = sorted(list(set([registro['usuario'] for registro in api_data])))
+        responsaveis.insert(0, "Todos")
+        defaultResponsavel = "Todos"
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            empresa_sel = st.multiselect("Filtrar por Consultoria", lista_empresas, default=["Todas"])
+        with col2:
+            consultor_sel = st.multiselect("Filtrar por consultor", lista_consultores, default=["Todos"])
+        with col3:            
+            responsavel_selecionado = st.multiselect("Filtrar por responsável", responsaveis, default=[defaultResponsavel])
+        
+        
+            
+        # Lista de eventos para o calendário
+        eventos = []
+        for registro in api_data:
+            # trata datetimes (assume que datInicio/datFim já são datetime)
+            try:
+                data_inicio_dt = registro['datInicio']
+                data_fim_dt = registro['datFim']
+            except Exception:
+                # se os dados vierem como string, tenta parse
+                try:
+                    data_inicio_dt = datetime.fromisoformat(registro['datInicio'])
+                    data_fim_dt = datetime.fromisoformat(registro['datFim'])
+                except Exception:
+                    # se falhar, ignora este registro
+                    continue
+
+            data_inicial_dt = data_inicio_dt.date()
+            data_final_dt = data_fim_dt.date()
+            
+            hora_inicial = data_inicio_dt.time()
+            hora_final = data_fim_dt.time()
+            
+            if (
+                ("Todos" in responsavel_selecionado or registro['usuario'] in responsavel_selecionado)
+                and ("Todas" in empresa_sel or registro.get('modeloEquipe') in empresa_sel)
+                and ("Todos" in consultor_sel or registro['usuario'] in consultor_sel)
+            ):
+                # caso span de dias, quebra em eventos por dia (como você fazia)
+                for i in range((data_final_dt - data_inicial_dt).days + 1):
+                    data_atual = data_inicial_dt + timedelta(days=i)
+                    start = f"{data_atual.strftime('%Y-%m-%d')}T{hora_inicial.strftime('%H:%M:%S')}"
+                    end = f"{data_atual.strftime('%Y-%m-%d')}T{hora_final.strftime('%H:%M:%S')}"
+                    bgColor = empresa_to_color(registro.get('modeloEquipe') or registro.get('cargo') or registro.get('usuario'))
+                    brColor = bgColor  # mesma cor para borda, você pode clarear se quiser
+                    
+                    eventos.append({
+                        "id": registro.get('idagenda') or registro.get('idAgenda') or registro.get('idAgenda'),
+                        "allDay": True,
+                        "title": hora_inicial.strftime('%H:%M') + " - " + registro['usuario'] + " - " + (registro.get('projeto') or '')+ (registro.get('nomeProjeto') or ''),
+                        "start": start,
+                        "end": end,
+                        "resourceId": registro['idUsuario'],
+                        "backgroundColor": bgColor,
+                        "borderColor": brColor,
+                        "extendedProps": {
+                            "idAgenda": registro.get('idagenda') or registro.get('idAgenda'),
+                            "usuario": registro['usuario'],
+                            "projeto": registro.get('projeto', ''),
+                            "consultoria": registro.get('modeloEquipe', ''),
+                            "cargo": registro.get('cargo', ''),
+                            "gp": registro.get('gp', ''),
+                            "atividade": registro.get('atividade', ''),
+                            "obs": registro.get('obsagenda', ''),
+                            "start": start,
+                            "end": end
+                        }
+                    })
+
+        if eventos:
+            st.markdown("""
+                <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+                <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.1/dist/css/adminlte.min.css">
+                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css" integrity="sha512-Kc323vGBEqzTmouAECnVceyQqyqdsSiqLQISBL29aUW4U/M7pSPA/gEUZQqv1cwx4OnYxTxve5UMg5GT6L4JJg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+            """, unsafe_allow_html=True)
+            
+            calendar_widget = streamlit_calendar(
+                events=eventos,
+                options=calendar_options,
+                custom_css="""
+                .fc-event-title {
+                    font-weight: normal;
+                }
+                .fc-resourceTimelineDay-button,
+                .fc-resourceTimelineWeek-button,
+                .fc-resourceTimelineMonth-button{
+                    display: none;
+                }
+                .fc-h-event .fc-event-main{
+                    color:#000;
+                }
+                """)
+            
+            # Cliques em eventos
+            if calendar_widget.get("callback") == "eventClick":
+                # abrir modal com dados do evento
+                ev = calendar_widget["eventClick"]["event"]
+                abrirAgenda(ev)
+
+            # Clique no dia → abrir modal de novo agendamento (passando a data)
+            if calendar_widget.get("callback") == "dateClick":
+                date_str = calendar_widget["dateClick"]["date"]  # espera ISO date string
+                try:
+                    data_click = datetime.fromisoformat(date_str).date()
+                except Exception:
+                    data_click = datetime.strptime(date_str.split("T")[0], "%Y-%m-%d").date()
+                abrirNovoModal(data_clicada=data_click)
+
+            # Se salvou (flag) → recarrega a página para atualizar eventos
+            if st.session_state.get('reload_calendar'):
+                st.session_state['reload_calendar'] = False
+                st.experimental_rerun()
+
+        else:
+            st.title("Sem agendas para mostrar")    
+            
+if __name__ == "__main__":
+    main()
